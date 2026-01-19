@@ -1,0 +1,47 @@
+# LIBERO Simulation Configuration
+# Reference: https://github.com/Lifelong-Robot-Learning/LIBERO
+
+environment:
+  task_suite: "libero_long"  # Options: libero_spatial, libero_object, libero_goal, libero_long
+  task_id: 0  # Task index within suite (0-9 for most suites)
+  
+  # Rendering settings
+  render_mode: "rgb_array"  # "human" for display, "rgb_array" for headless
+  camera_name: "agentview"  # agentview, robot0_eye_in_hand
+  image_size: [256, 256]
+  
+  # Episode settings
+  max_episode_steps: 600  # Long-horizon tasks need more steps
+  action_repeat: 1
+
+robot:
+  name: "Panda"  # Franka Panda arm
+  controller: "OSC_POSE"  # Operational space control
+  gripper: "PandaGripper"
+
+# Domain shift settings (for deployment simulation)
+domain_shift:
+  enabled: true
+  levels:
+    none:
+      lighting_variation: 0.0
+      camera_noise: 0.0
+      object_position_noise: 0.0
+    low:
+      lighting_variation: 0.1
+      camera_noise: 0.02
+      object_position_noise: 0.02
+    medium:
+      lighting_variation: 0.2
+      camera_noise: 0.05
+      object_position_noise: 0.05
+    high:
+      lighting_variation: 0.3
+      camera_noise: 0.1
+      object_position_noise: 0.1
+  current_level: "medium"
+
+# Vectorized environments (for parallel data collection)
+vectorized:
+  enabled: false
+  num_envs: 3  # 2-3 parallel instances for fleet simulation

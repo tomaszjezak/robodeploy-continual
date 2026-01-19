@@ -1,0 +1,42 @@
+# PI0.5 Model Configuration
+# Reference: https://github.com/Physical-Intelligence/openpi
+
+model:
+  # HuggingFace model path
+  name: "TensorAuto/tPi0.5-libero"  # or "cnboonhan/pi0.5-pnp-policy"
+  
+  # Alternative: LeRobot path
+  lerobot_path: "lerobot/pi0_libero_finetuned"
+  
+  # Model architecture
+  type: "pi0.5"
+  vision_encoder: "dinov2"  # DINOv2 for visual features
+  language_model: "paligemma"  # PaLI-GeMMA for VLA
+  
+  # Input specifications
+  image_size: 256
+  num_cameras: 1  # agentview only; can add robot0_eye_in_hand
+  proprioception_dim: 8  # joint positions + gripper state
+  
+  # Action specifications  
+  action_dim: 7  # 6 DOF + gripper
+  action_horizon: 16  # Action chunking window
+  
+  # Memory optimization for 16GB GPU
+  dtype: "bfloat16"  # bf16 for mixed precision
+  load_in_8bit: false  # Enable if OOM
+  gradient_checkpointing: true
+
+inference:
+  # Action chunking for efficiency
+  chunk_size: 16
+  temporal_ensemble: true
+  ensemble_weights: "exponential"  # exponential decay for action blending
+  
+  # Uncertainty estimation
+  compute_entropy: true
+  entropy_threshold: 2.0  # Flag as "pre-fail" if entropy > threshold
+
+device:
+  cuda: true
+  device_id: 0

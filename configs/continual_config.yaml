@@ -1,0 +1,109 @@
+# Continual Learning Configuration
+# SOP-inspired online post-training (ref: arXiv 2601.03044)
+
+# Reliability thresholds
+thresholds:
+  success_rate:
+    window_size: 50  # Sliding window of episodes
+    trigger_threshold: 0.90  # Trigger update if < 90%
+    target_threshold: 0.95  # Goal reliability
+  
+  entropy:
+    pre_fail_threshold: 2.0  # Flag as uncertain/pre-fail
+    critical_threshold: 3.0  # Immediate intervention
+  
+  consecutive_failures:
+    max_allowed: 3  # Trigger correction injection after 3 failures
+
+# Data collection
+collection:
+  # Episode buffer
+  buffer_size: 500
+  prioritize_failures: true
+  
+  # Failure category weights (for prioritization)
+  failure_weights:
+    grasp_slip: 2.0
+    reach_miss: 1.5
+    collision: 2.5  # Safety-critical
+    timeout: 1.0
+    occlusion: 1.5
+  
+  # Entropy-based prioritization
+  entropy_weight: 1.5  # Multiply priority by this for high-entropy episodes
+
+# Corrections (simulated human intervention)
+corrections:
+  method: "oracle"  # "oracle" (LIBERO's expert policy) or "scripted"
+  
+  # Oracle settings
+  oracle:
+    use_libero_expert: true
+    noise_injection: 0.01  # Small noise for robustness
+  
+  # Scripted perturbation settings
+  scripted:
+    action_noise_std: 0.1
+    position_correction_gain: 0.5
+
+# Online learning loop
+online_loop:
+  # Update frequency
+  update_every_n_episodes: 20
+  min_episodes_for_update: 10
+  
+  # Training batch composition (HG-DAgger style)
+  on_policy_ratio: 0.8  # 80% on-policy data
+  correction_ratio: 0.2  # 20% corrections
+  
+  # Async pattern (SOP-style)
+  async_updates: false  # Set true for actual async; false for sequential
+  
+  # LoRA training per update
+  gradient_steps_per_update: 50
+  
+  # Weight sync
+  sync_method: "local"  # "local" or "huggingface"
+  checkpoint_dir: "checkpoints/lora_adapters"
+
+# Anti-forgetting
+anti_forgetting:
+  method: "replay"  # "replay", "ewc", or "both"
+  
+  # Replay buffer
+  replay:
+    base_task_ratio: 0.2  # Include 20% base task examples
+    max_buffer_size: 1000
+  
+  # EWC (Elastic Weight Consolidation)
+  ewc:
+    enabled: false  # Enable only if replay insufficient
+    lambda: 1000.0  # Regularization strength
+    sample_size: 200  # Episodes to compute Fisher information
+
+# Monitoring
+monitoring:
+  # Metrics to track
+  metrics:
+    - "success_rate"
+    - "episode_length"
+    - "action_entropy"
+    - "failure_category"
+    - "update_triggers"
+  
+  # Logging
+  log_every_n_episodes: 5
+  save_episode_data: true
+  
+  # Dashboard
+  dashboard:
+    enabled: true
+    update_interval: 10  # Update every N episodes
+    port: 8501  # Streamlit port if using
+
+# Flywheel tracking
+flywheel:
+  # Track success over update cycles
+  track_cycles: true
+  expected_improvement_per_cycle: 0.05  # 5% per cycle target
+  max_cycles: 20

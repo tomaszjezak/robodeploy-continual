@@ -1,0 +1,66 @@
+# LoRA Fine-tuning Configuration
+# Optimized for 16GB GPU
+
+lora:
+  # Conservative settings for memory
+  r: 8  # Rank (start low, can increase to 16 if memory allows)
+  lora_alpha: 32
+  lora_dropout: 0.1
+  
+  # Target modules (PI0.5 specific)
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+  
+  # Bias handling
+  bias: "none"
+  
+  # Task type
+  task_type: "CAUSAL_LM"
+
+training:
+  # Memory-optimized settings
+  batch_size: 1
+  gradient_accumulation_steps: 8  # Effective batch = 8
+  
+  # Learning rate
+  learning_rate: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.1
+  
+  # Training duration
+  num_epochs: 5
+  max_steps: -1  # -1 = use epochs
+  
+  # Precision
+  fp16: false
+  bf16: true
+  
+  # Gradient clipping
+  max_grad_norm: 1.0
+  
+  # Checkpointing
+  gradient_checkpointing: true
+  save_steps: 100
+  eval_steps: 50
+  
+  # Logging
+  logging_steps: 10
+  report_to: "wandb"  # or "tensorboard"
+
+# Anti-forgetting: Replay buffer settings
+replay:
+  enabled: true
+  buffer_ratio: 0.2  # 20% base task examples in each batch
+  buffer_size: 1000  # Max episodes to store
+
+# 8-bit fallback if OOM
+quantization:
+  load_in_8bit: false  # Enable if OOM
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_quant_type: "nf4"
