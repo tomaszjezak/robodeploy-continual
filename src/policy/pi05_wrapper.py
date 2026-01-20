@@ -1,12 +1,14 @@
 """
-PI0 Policy Wrapper for LIBERO
-Wraps the PI0 VLA model for inference in LIBERO simulation.
+PI0.5 Policy Wrapper for LIBERO
+Wraps the PI0.5 VLA model for inference in LIBERO simulation.
 
-Uses LeRobot's native from_pretrained() for reliable model loading.
+Supports two backends:
+- OpenPI (recommended): Physical Intelligence's official implementation
+- LeRobot: HuggingFace's robotics library
 
 References:
-- LeRobot: https://github.com/huggingface/lerobot
 - OpenPI: https://github.com/Physical-Intelligence/openpi
+- LeRobot: https://github.com/huggingface/lerobot
 """
 
 import torch
@@ -30,15 +32,17 @@ class PolicyOutput:
 
 class PI05Policy:
     """
-    PI0/PI0.5 Vision-Language-Action policy wrapper.
+    PI0.5 Vision-Language-Action policy wrapper.
     
     Handles:
-    - Model loading via LeRobot's native from_pretrained
-    - Image preprocessing
+    - Model loading via OpenPI (recommended) or LeRobot
+    - Image preprocessing for LIBERO observations
     - Action inference with chunking
     - Entropy computation for uncertainty estimation
     
-    Note: Named PI05Policy for backwards compatibility, but supports PI0 as well.
+    Backends:
+    - "openpi": Physical Intelligence's official PI0.5 (faster, recommended)
+    - "lerobot": HuggingFace LeRobot's PI0 (fallback)
     """
     
     def __init__(
@@ -70,15 +74,11 @@ class PI05Policy:
         
     def load(self, checkpoint_path: Optional[str] = None):
         """
-        Load the PI0/PI0.5 model.
+        Load the PI0.5 model.
         
         Args:
             checkpoint_path: Override checkpoint path (optional)
         """
-        model_name = checkpoint_path or self.config.model.name
-        
-        print(f"Loading PI0 model from: {model_name}")
-        
         # Always initialize action chunker first (needed even for mock mode)
         self.action_chunker = ActionChunker(
             chunk_size=self.config.inference.chunk_size,
@@ -86,22 +86,78 @@ class PI05Policy:
             temporal_ensemble=self.config.inference.temporal_ensemble,
         )
         
+        # Determine backend from config
+        backend = self.config.model.get("backend", "openpi")
+        print(f"Using backend: {backend}")
+        
+        if backend == "openpi":
+            # OpenPI backend (recommended for PI0.5)
+            openpi_config_name = checkpoint_path or self.config.model.get("openpi_config", "pi05_libero")
+            checkpoint_dir = self.config.model.get("checkpoint_dir", None)
+            print(f"Loading PI0.5 via OpenPI: config={openpi_config_name}")
+            
+            try:
+                self._load_via_openpi(openpi_config_name, checkpoint_dir)
+                print(f"Model loaded successfully on {self.device}")
+                self._print_memory_usage()
+            except Exception as e:
+                print(f"OpenPI loading failed: {e}")
+                print("Falling back to LeRobot...")
+                self._try_lerobot_fallback()
+        else:
+            # LeRobot backend
+            model_name = checkpoint_path or self.config.model.name
+            print(f"Loading PI0 via LeRobot: {model_name}")
+            self._try_lerobot_fallback(model_name)
+    
+    def _try_lerobot_fallback(self, model_name: str = "lerobot/pi0_base"):
+        """Try loading via LeRobot, fall back to mock mode if that fails."""
         try:
-            # Try loading via LeRobot first (recommended)
             self._load_via_lerobot(model_name)
             print(f"Model loaded successfully on {self.device}")
             self._print_memory_usage()
         except Exception as e:
             print(f"LeRobot loading failed: {e}")
-            print("Falling back to direct HuggingFace loading...")
-            try:
-                self._load_via_transformers(model_name)
-                print(f"Model loaded successfully on {self.device}")
-                self._print_memory_usage()
-            except Exception as e2:
-                print(f"HuggingFace loading also failed: {e2}")
-                print("Running in MOCK MODE - random actions will be generated")
-                self.model = None  # Explicitly set to None for mock mode
+            print("Running in MOCK MODE - random actions will be generated")
+            self.model = None
+    
+    def _load_via_openpi(self, config_name: str, checkpoint_dir: Optional[str] = None):
+        """
+        Load PI0.5 using OpenPI's native inference.
+        
+        Args:
+            config_name: OpenPI config name (e.g., 'pi05_libero', 'pi05_droid')
+            checkpoint_dir: Path to checkpoint directory (optional, will download if not provided)
+        """
+        try:
+            from openpi.training import config as openpi_config
+            from openpi.policies import policy_config
+            from openpi.shared import download
+        except ImportError as e:
+            raise ImportError(
+                f"OpenPI not installed. Install with: cd ~/openpi && uv sync\n"
+                f"Or clone from: https://github.com/Physical-Intelligence/openpi\n"
+                f"Error: {e}"
+            )
+        
+        print(f"Loading OpenPI config: {config_name}")
+        config = openpi_config.get_config(config_name)
+        
+        # Download checkpoint if not provided
+        if checkpoint_dir is None:
+            # Use GCS URL for checkpoint download
+            checkpoint_url = f"gs://openpi-assets/checkpoints/{config_name}"
+            print(f"Downloading checkpoint from {checkpoint_url}...")
+            print("(This may take several minutes on first run)")
+            checkpoint_dir = download.maybe_download(checkpoint_url)
+            print(f"Checkpoint directory: {checkpoint_dir}")
+        
+        # Create trained policy
+        print("Creating trained policy...")
+        self.model = policy_config.create_trained_policy(config, checkpoint_dir)
+        self._openpi_config = config  # Store for preprocessing
+        
+        print(f"Loaded PI0.5 from OpenPI: {config_name}")
         
     def _load_via_lerobot(self, model_name: str):
         """Load model using LeRobot's native from_pretrained (simplest, most reliable)."""
@@ -282,17 +338,19 @@ class PI05Policy:
                 entropy=0.0,  # No entropy for buffered actions
             )
         
-        # Need to generate new action chunk
-        inputs = self.preprocess_observation(image, proprioception, language_instruction)
-        
-        # Forward pass
-        if hasattr(self.model, 'predict_action'):
+        # Forward pass depends on backend
+        if hasattr(self, '_openpi_config'):
+            # OpenPI backend
+            actions, entropy = self._forward_openpi(image, proprioception, language_instruction)
+        elif hasattr(self.model, 'predict_action'):
             # LeRobot-style interface
+            inputs = self.preprocess_observation(image, proprioception, language_instruction)
             output = self.model.predict_action(inputs)
             actions = output['action'].cpu().numpy()
             entropy = self._compute_entropy(output.get('logits', None))
         else:
             # Generic transformer interface
+            inputs = self.preprocess_observation(image, proprioception, language_instruction)
             actions, entropy = self._forward_transformers(inputs)
         
         # Apply action chunking / temporal ensemble
@@ -307,6 +365,43 @@ class PI05Policy:
             entropy=entropy,
             raw_actions=actions,
         )
+    
+    def _forward_openpi(
+        self,
+        image: np.ndarray,
+        proprioception: np.ndarray,
+        language_instruction: str,
+    ) -> Tuple[np.ndarray, float]:
+        """Forward pass using OpenPI policy."""
+        # OpenPI expects observation dict with specific keys
+        # The exact format depends on the config (LIBERO, DROID, ALOHA, etc.)
+        
+        # Normalize image to [0, 1] if needed
+        if image.max() > 1.0:
+            image = image.astype(np.float32) / 255.0
+        
+        # Build observation dict for OpenPI
+        # For LIBERO, typically: image, state, prompt
+        observation = {
+            "image": image,  # (H, W, 3)
+            "state": proprioception,  # Robot state
+            "prompt": language_instruction,  # Task instruction
+        }
+        
+        # OpenPI infer returns dict with 'actions' key
+        result = self.model.infer(observation)
+        actions = result["actions"]  # Action chunk
+        
+        # Convert to numpy if needed
+        if hasattr(actions, 'numpy'):
+            actions = actions.numpy()
+        elif not isinstance(actions, np.ndarray):
+            actions = np.array(actions)
+        
+        # OpenPI doesn't provide entropy directly, estimate as 0
+        entropy = 0.0
+        
+        return actions, entropy
     
     def _forward_transformers(
         self,

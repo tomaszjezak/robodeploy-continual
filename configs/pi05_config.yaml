@@ -1,18 +1,26 @@
-# PI0 Model Configuration
-# Reference: https://github.com/huggingface/lerobot
+# PI0.5 Model Configuration
+# Reference: https://github.com/Physical-Intelligence/openpi
 
 model:
-  # PI0 base model (publicly available on HuggingFace)
+  # Backend: "openpi" (recommended) or "lerobot"
+  backend: "openpi"
+  
+  # OpenPI settings (used when backend: "openpi")
+  openpi_config: "pi05_libero"  # Config name for LIBERO tasks
+  checkpoint_dir: null  # Auto-download if null, or specify path like "~/openpi/checkpoints/pi05_libero"
+  
+  # Alternative OpenPI configs:
+  # - "pi05_droid" (DROID dataset)
+  # - "pi05_aloha" (ALOHA hardware)
+  # - "pi0_libero" (PI0, larger/slower)
+  
+  # LeRobot settings (used when backend: "lerobot")
   name: "lerobot/pi0_base"
   
-  # Alternative models:
-  # - "lerobot/pi0_libero" (if available, fine-tuned for LIBERO)
-  # - "lerobot/act_aloha_sim_transfer_cube_human" (ACT - simpler, backup)
-  
-  # Model architecture
-  type: "pi0"
+  # Model architecture (for reference)
+  type: "pi0.5"
   vision_encoder: "siglip"  # SigLIP for visual features  
-  language_model: "gemma"  # Gemma for VLA
+  language_model: "gemma"  # Gemma-2B for VLA
   
   # Input specifications
   image_size: 256
