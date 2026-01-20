@@ -1,18 +1,18 @@
-# PI0.5 Model Configuration
-# Reference: https://github.com/Physical-Intelligence/openpi
+# PI0 Model Configuration
+# Reference: https://github.com/huggingface/lerobot
 
 model:
-  # PI0.5 fine-tuned for LIBERO
-  name: "lerobot/pi05_libero_finetuned"
+  # PI0 base model (publicly available on HuggingFace)
+  name: "lerobot/pi0_base"
   
   # Alternative models:
-  # - "lerobot/pi05_base" (general PI0.5)
+  # - "lerobot/pi0_libero" (if available, fine-tuned for LIBERO)
   # - "lerobot/act_aloha_sim_transfer_cube_human" (ACT - simpler, backup)
   
   # Model architecture
-  type: "pi0.5"
-  vision_encoder: "dinov2"  # DINOv2 for visual features
-  language_model: "paligemma"  # PaLI-GeMMA for VLA
+  type: "pi0"
+  vision_encoder: "siglip"  # SigLIP for visual features  
+  language_model: "gemma"  # Gemma for VLA
   
   # Input specifications
   image_size: 256

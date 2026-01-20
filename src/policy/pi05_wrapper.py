@@ -1,10 +1,12 @@
 """
-PI0.5 Policy Wrapper for LIBERO
-Wraps the PI0.5 VLA model for inference in LIBERO simulation.
+PI0 Policy Wrapper for LIBERO
+Wraps the PI0 VLA model for inference in LIBERO simulation.
+
+Uses LeRobot's native from_pretrained() for reliable model loading.
 
 References:
-- OpenPI: https://github.com/Physical-Intelligence/openpi
 - LeRobot: https://github.com/huggingface/lerobot
+- OpenPI: https://github.com/Physical-Intelligence/openpi
 """
 
 import torch
@@ -28,13 +30,15 @@ class PolicyOutput:
 
 class PI05Policy:
     """
-    PI0.5 Vision-Language-Action policy wrapper.
+    PI0/PI0.5 Vision-Language-Action policy wrapper.
     
     Handles:
-    - Model loading (from HuggingFace or local checkpoint)
+    - Model loading via LeRobot's native from_pretrained
     - Image preprocessing
     - Action inference with chunking
     - Entropy computation for uncertainty estimation
+    
+    Note: Named PI05Policy for backwards compatibility, but supports PI0 as well.
     """
     
     def __init__(
@@ -66,14 +70,14 @@ class PI05Policy:
         
     def load(self, checkpoint_path: Optional[str] = None):
         """
-        Load the PI0.5 model.
+        Load the PI0/PI0.5 model.
         
         Args:
             checkpoint_path: Override checkpoint path (optional)
         """
         model_name = checkpoint_path or self.config.model.name
         
-        print(f"Loading PI0.5 model from: {model_name}")
+        print(f"Loading PI0 model from: {model_name}")
         
         # Always initialize action chunker first (needed even for mock mode)
         self.action_chunker = ActionChunker(
@@ -100,58 +104,49 @@ class PI05Policy:
                 self.model = None  # Explicitly set to None for mock mode
         
     def _load_via_lerobot(self, model_name: str):
-        """Load model using LeRobot library (v0.4+ with lerobot.policies structure)."""
-        try:
-            print(f"Loading LeRobot policy from: {model_name}")
+        """Load model using LeRobot's native from_pretrained (simplest, most reliable)."""
+        print(f"Loading LeRobot policy from: {model_name}")
+        
+        # Detect policy type from model name and use native from_pretrained
+        model_lower = model_name.lower()
+        
+        if "pi0" in model_lower and "pi05" not in model_lower:
+            # PI0 model
+            from lerobot.policies.pi0.modeling_pi0 import PI0Policy
+            print("Detected PI0 policy, using PI0Policy.from_pretrained()")
+            self.model = PI0Policy.from_pretrained(model_name)
+            print("Loaded PI0 policy from LeRobot")
             
-            # Use PreTrainedConfig to auto-detect policy type, then load correct class
-            from lerobot.policies.pretrained import PreTrainedConfig
+        elif "pi05" in model_lower:
+            # PI0.5 model  
+            from lerobot.policies.pi05.modeling_pi05 import PI05Policy
+            print("Detected PI0.5 policy, using PI05Policy.from_pretrained()")
+            self.model = PI05Policy.from_pretrained(model_name)
+            print("Loaded PI0.5 policy from LeRobot")
             
-            config = PreTrainedConfig.from_pretrained(model_name)
-            policy_type = config.__class__.__name__
-            print(f"Detected policy type: {policy_type}")
+        elif "act" in model_lower:
+            # ACT model
+            from lerobot.policies.act.modeling_act import ACTPolicy
+            print("Detected ACT policy, using ACTPolicy.from_pretrained()")
+            self.model = ACTPolicy.from_pretrained(model_name)
+            print("Loaded ACT policy from LeRobot")
             
-            # Get the correct policy class based on config type
-            if "PI05" in policy_type:
-                from lerobot.policies.pi05.modeling_pi05 import PI05Policy
-                self.model = PI05Policy(config)
-                # Load weights separately to avoid the transformer check issue
-                import torch
-                from huggingface_hub import hf_hub_download
-                weights_path = hf_hub_download(repo_id=model_name, filename="model.safetensors")
-                from safetensors.torch import load_file
-                state_dict = load_file(weights_path)
-                self.model.load_state_dict(state_dict, strict=False)
-                print("Loaded PI0.5 policy from LeRobot")
-            elif "PI0" in policy_type:
-                from lerobot.policies.pi0.modeling_pi0 import PI0Policy
-                self.model = PI0Policy(config)
-                import torch
-                from huggingface_hub import hf_hub_download
-                weights_path = hf_hub_download(repo_id=model_name, filename="model.safetensors")
-                from safetensors.torch import load_file
-                state_dict = load_file(weights_path)
-                self.model.load_state_dict(state_dict, strict=False)
-                print("Loaded PI0 policy from LeRobot")
-            elif "ACT" in policy_type:
-                from lerobot.policies.act.modeling_act import ACTPolicy
-                self.model = ACTPolicy.from_pretrained(model_name)
-                print("Loaded ACT policy from LeRobot")
-            elif "Diffusion" in policy_type:
-                from lerobot.policies.diffusion.modeling_diffusion import DiffusionPolicy
-                self.model = DiffusionPolicy.from_pretrained(model_name)
-                print("Loaded Diffusion policy from LeRobot")
-            else:
-                raise ImportError(f"Unknown policy type: {policy_type}")
+        elif "diffusion" in model_lower:
+            # Diffusion policy
+            from lerobot.policies.diffusion.modeling_diffusion import DiffusionPolicy
+            print("Detected Diffusion policy, using DiffusionPolicy.from_pretrained()")
+            self.model = DiffusionPolicy.from_pretrained(model_name)
+            print("Loaded Diffusion policy from LeRobot")
             
-            if self.load_in_8bit:
-                self._quantize_model()
-            
-            self.model.to(self.device)
-            self.model.eval()
-            
-        except Exception as e:
-            raise ImportError(f"LeRobot loading failed: {e}")
+        else:
+            raise ValueError(f"Unknown model type in name: {model_name}. "
+                           f"Expected 'pi0', 'pi05', 'act', or 'diffusion' in name.")
+        
+        if self.load_in_8bit:
+            self._quantize_model()
+        
+        self.model.to(self.device)
+        self.model.eval()
         
     def _load_via_transformers(self, model_name: str):
         """Fallback: Load model using transformers directly."""
@@ -363,11 +358,11 @@ def load_pi05_policy(
     load_in_8bit: bool = False,
 ) -> PI05Policy:
     """
-    Load PI0.5 policy with default settings.
+    Load PI0/PI0.5 policy with default settings.
     
     Args:
         config_path: Path to config file
-        checkpoint_path: Override model path
+        checkpoint_path: Override model path (e.g., "lerobot/pi0_base")
         device: Device to use
         load_in_8bit: Enable 8-bit quantization
         
