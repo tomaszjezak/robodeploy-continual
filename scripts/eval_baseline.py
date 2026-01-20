@@ -23,10 +23,11 @@ import torch
 from tqdm import tqdm
 
 
-def create_libero_env(task: str = "libero_long", task_id: int = 0):
+def create_libero_env(task: str = "libero_spatial", task_id: int = 0):
     """Create LIBERO environment."""
     try:
-        from libero.libero import benchmark
+        import os
+        from libero.libero import benchmark, get_libero_path
         from libero.libero.envs import OffScreenRenderEnv
         
         # Get task suite
@@ -37,9 +38,16 @@ def create_libero_env(task: str = "libero_long", task_id: int = 0):
         task_spec = task_suite.get_task(task_id)
         task_name = task_spec.name
         
+        # Construct FULL path to bddl file (including benchmark subdirectory)
+        bddl_dir = get_libero_path("bddl_files")
+        bddl_full_path = os.path.join(bddl_dir, task, task_spec.bddl_file)
+        
+        print(f"BDDL path: {bddl_full_path}")
+        print(f"Exists: {os.path.exists(bddl_full_path)}")
+        
         # Create environment
         env_args = {
-            "bddl_file_name": task_spec.bddl_file,
+            "bddl_file_name": bddl_full_path,
             "camera_heights": 256,
             "camera_widths": 256,
         }
@@ -60,12 +68,7 @@ def load_policy(config_path: str = "configs/pi05_config.yaml"):
     from src.policy.pi05_wrapper import PI05Policy
     
     policy = PI05Policy(config_path)
-    
-    try:
-        policy.load()
-    except Exception as e:
-        print(f"Warning: Could not load model: {e}")
-        print("Running in mock mode for testing")
+    policy.load()  # Policy handles mock mode internally if loading fails
     
     return policy
 
@@ -177,8 +180,8 @@ def main():
     parser.add_argument(
         "--task",
         type=str,
-        default="libero_long",
-        choices=["libero_spatial", "libero_object", "libero_goal", "libero_long"],
+        default="libero_spatial",
+        choices=["libero_spatial", "libero_object", "libero_goal", "libero_10", "libero_90", "libero_100"],
         help="LIBERO task suite",
     )
     parser.add_argument(

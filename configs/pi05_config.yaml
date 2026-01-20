@@ -2,11 +2,12 @@
 # Reference: https://github.com/Physical-Intelligence/openpi
 
 model:
-  # HuggingFace model path
-  name: "TensorAuto/tPi0.5-libero"  # or "cnboonhan/pi0.5-pnp-policy"
+  # PI0.5 fine-tuned for LIBERO
+  name: "lerobot/pi05_libero_finetuned"
   
-  # Alternative: LeRobot path
-  lerobot_path: "lerobot/pi0_libero_finetuned"
+  # Alternative models:
+  # - "lerobot/pi05_base" (general PI0.5)
+  # - "lerobot/act_aloha_sim_transfer_cube_human" (ACT - simpler, backup)
   
   # Model architecture
   type: "pi0.5"
