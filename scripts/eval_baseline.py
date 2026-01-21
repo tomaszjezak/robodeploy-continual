@@ -11,12 +11,23 @@ Runs the base policy and collects metrics:
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from datetime import datetime
 
-# Add parent to path
+# Add paths for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Add LIBERO to path if installed in home directory
+libero_path = os.path.expanduser("~/LIBERO")
+if os.path.exists(libero_path) and libero_path not in sys.path:
+    sys.path.insert(0, libero_path)
+
+# Add OpenPI to path if installed in home directory  
+openpi_path = os.path.expanduser("~/openpi/src")
+if os.path.exists(openpi_path) and openpi_path not in sys.path:
+    sys.path.insert(0, openpi_path)
 
 import numpy as np
 import torch
